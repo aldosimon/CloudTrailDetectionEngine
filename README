@@ -7,4 +7,4 @@ The goal is to have high impact cloudtraill api call that likely malicious to be
 
 # workflow
 
-![workflow](https://raw.githubusercontent.com/aldosimon/CloudTrailDetectResponse/refs/heads/main/assets/img/CTDR.drawio.png)
+![ctdr](assets/img/CTDR.drawio.png)
