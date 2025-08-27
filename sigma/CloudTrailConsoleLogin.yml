@@ -1,0 +1,22 @@
+title: AWS ConsoleLogin
+status: test
+description: detect console login to test sigma loading mechanism
+references:
+    - meh
+author: aldosimon
+date: 2025-08-27
+modified: -
+tags:
+    - testing
+logsource:
+    product: aws
+    service: cloudtrail
+detection:
+    selection_source:
+        eventSource: cloudtrail.amazonaws.com
+        eventName:
+            - ConsoleLogin
+    condition: selection_source
+falsepositives:
+    - meh
+level: low
