@@ -17,10 +17,11 @@ sns_topic_arn = os.environ.get('SnsArn') # Set this environment variable!
 # S3 bucket for security rules - new variable
 # We can also put this in environment variable, like S3_RULES_BUCKET
 S3_RULES_BUCKET = 'sigma-signature' # ⚠️ **Update this with your actual bucket name** ⚠️
-S3_RULES_KEY = 'signature.yml.gz'  # upload your sig in gzipped format (.gz)
+# S3_RULES_KEY = 'signature.yml.gz'  # deprecated, we will load all YAML files in the bucket
 def fetch_s3(bucket, key):
     """
     Downloads and decompresses a gzipped file from S3.
+    If the file is not .gz, returns the raw content.
 
     Args:
         bucket (str): The name of the S3 bucket.
@@ -34,52 +35,66 @@ def fetch_s3(bucket, key):
 
     try:
         response = s3.get_object(Bucket=bucket, Key=key)
-        compressed_content = response['Body'].read()
-        logger.debug(f"Successfully downloaded {len(compressed_content)} bytes from S3.")
+        content = response['Body'].read()
+        logger.debug(f"Successfully downloaded {len(content)} bytes from S3.")
 
-        try:
-            content = gzip.decompress(compressed_content)
-            logger.debug(f"Successfully decompressed file. Size: {len(content)} bytes.")
+        if key.endswith('.gz'):
+            try:
+                content = gzip.decompress(content)
+                logger.debug(f"Successfully decompressed file. Size: {len(content)} bytes.")
+                return content
+            except Exception as e:
+                logger.warning(f"Error decompressing file '{key}': {e}")
+                return None
+        else:
+            logger.debug(f"File '{key}' is not gzipped. Returning raw content.")
             return content
-        except Exception as e:
-            logger.warning(f"Error decompressing file '{key}': {e}")
-            return None
     except Exception as e:
         logger.error(f"Error fetching file from S3 for '{key}': {e}")
-        return None
 
 # Use functools.lru_cache to cache the rules in memory to avoid repeated S3 fetches during a single Lambda execution
 @lru_cache(maxsize=1)
 def load_matching_criteria():
     """
-    Fetches the matching criteria from a Sigma YAML rules file in S3.
+    Fetches the matching criteria from all Sigma YAML rules files in the S3 bucket.
 
     Returns:
         set: A set of event names to match, or an empty set on error.
     """
-    global S3_RULES_BUCKET, S3_RULES_KEY
-    logger.info(f"Loading matching criteria from S3 bucket '{S3_RULES_BUCKET}' with key '{S3_RULES_KEY}'.")
-    content = fetch_s3(S3_RULES_BUCKET, S3_RULES_KEY)
-    if content:
-        try:
-            sigma_rule = yaml.safe_load(content.decode('utf-8'))
-            # Sigma rules typically have event names under detection > selection > eventName
-            criteria_events = set()
-            detection = sigma_rule.get('detection', {})
-            for key, value in detection.items():
-                if isinstance(value, dict):
-                    event_name = value.get('eventName')
-                    if isinstance(event_name, list):
-                        criteria_events.update(event_name)
-                    elif isinstance(event_name, str):
-                        criteria_events.add(event_name)
-            logger.info(f"Successfully loaded {len(criteria_events)} matching criteria from Sigma YAML.")
-            return criteria_events
-        except Exception as e:
-            logger.error(f"Error parsing Sigma YAML rules file: {e}")
+    global S3_RULES_BUCKET
+    logger.info(f"Listing objects in S3 bucket '{S3_RULES_BUCKET}' to load matching criteria.")
+    s3 = boto3.client('s3')
+    criteria_events = set()
+    try:
+        response = s3.list_objects_v2(Bucket=S3_RULES_BUCKET)
+        files = response.get('Contents', [])
+        if not files:
+            logger.error(f"No files found in bucket '{S3_RULES_BUCKET}'.")
             return set()
-    else:
-        logger.error("Failed to load matching criteria from S3.")
+        for obj in files:
+            key = obj['Key']
+            logger.info(f"Found file in bucket: {key}")
+            content = fetch_s3(S3_RULES_BUCKET, key)
+            if content:
+                try:
+                    sigma_rule = yaml.safe_load(content.decode('utf-8'))
+                    detection = sigma_rule.get('detection', {})
+                    for d_key, value in detection.items():
+                        if isinstance(value, dict):
+                            event_name = value.get('eventName')
+                            if isinstance(event_name, list):
+                                criteria_events.update(event_name)
+                            elif isinstance(event_name, str):
+                                criteria_events.add(event_name)
+                    logger.info(f"Loaded criteria from {key}, total events so far: {len(criteria_events)}")
+                except Exception as e:
+                    logger.error(f"Error parsing Sigma YAML file '{key}': {e}")
+            else:
+                logger.error(f"Failed to fetch or decode file '{key}' from S3.")
+        logger.info(f"Successfully loaded {len(criteria_events)} matching criteria from all Sigma YAML files in bucket.")
+        return criteria_events
+    except Exception as e:
+        logger.error(f"Error listing or processing files in S3 bucket '{S3_RULES_BUCKET}': {e}")
         return set()
 
 def matching_rule(record):
@@ -123,18 +138,7 @@ def process_s3_records(s3_content):
         log_data = json.loads(s3_content.decode('utf-8'))
         records = log_data.get('Records', [])
         logger.debug(f"Successfully loaded JSON data. Found {len(records)} records.")
-
-        # DEBUG List all event_name values in the records
-        logger.info("Listing all event_name values in CloudTrail records:")
-        for record in records:
-            logger.info(f"event_name: {record.get('eventName')}")
-
-        # DEBUG List all criteria_events loaded from Sigma YAML
-        criteria_events = load_matching_criteria()
-        logger.info("Listing all criteria_events from Sigma YAML:")
-        for event in criteria_events:
-            logger.info(f"criteria_event: {event}")
-
+        
         matching_events = []
         for record in records:
             if matching_rule(record):
