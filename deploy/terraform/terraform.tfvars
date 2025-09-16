@@ -1,0 +1,5 @@
+admin_email            = "admin@example.com"
+sigma_bucket_name      = "my-sigma-signature-bucket-7584"
+cloudtrail_bucket_name = "my-cloudtrail-bucket-7484"
+lambda_name            = "cloudtrail-processor"
+aws_region             = "us-east-1"
