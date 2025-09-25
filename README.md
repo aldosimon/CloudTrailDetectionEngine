@@ -39,6 +39,7 @@ you can deploy using the provided terraform or by uploading the zipped lambda di
 - add more sigma examples
 - expand on sigma selection
 - format email alert
+- add threeshold feature to lambda
 
 # References and Credits
 
