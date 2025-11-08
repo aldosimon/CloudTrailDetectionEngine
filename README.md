@@ -6,9 +6,11 @@ Lambda send sns if there is a match for certain cloudtrail API call.
 
 The goal is to detect CloudTrail API calls that are both high-impact and indicative of malicious activity by having a lambda that load from sigma signature.
 
+I write about CTDE in my [blog](https://aldosimon.com/cloudtrail-detection-engine)
+
 ## Caveat
 
-Care must be use to choose the sigma rule that is very high-impact but not noisy. Some sigma examples are included. I also included ConsoleLogin as a test sigma.
+Care must be use to choose the sigma rule that is very high-impact but not noisy. Some sigma examples are included and [sigma-stash](https://github.com/aldosimon/sigma-stash) repository. I also included ConsoleLogin as a test sigma. 
 
 # Workflow
 
@@ -16,6 +18,7 @@ Care must be use to choose the sigma rule that is very high-impact but not noisy
 
 # Deploy
 you can deploy using the provided terraform or by uploading the zipped lambda directory
+
 ## Using IAC
 - prerequisite:
     - aws CLI is setup with the credentials
@@ -40,6 +43,7 @@ you can deploy using the provided terraform or by uploading the zipped lambda di
 - expand on sigma selection
 - format email alert
 - add threeshold feature to lambda
+- add correlation feature to lambda
 
 # References and Credits
 
